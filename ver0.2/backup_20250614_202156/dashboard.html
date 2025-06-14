@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTRラップタイム記録 - ダッシュボード</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>GTRラップタイム記録</h1>
+            <div class="user-info">
+                <span>ようこそ、{{ current_user.username }}さん</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-logout">ログアウト</a>
+            </div>
+        </header>
+
+        <div class="dashboard-content">
+            <div class="settings-panel">
+                <h2>設定</h2>
+                
+                <!-- ゲームタイトル設定 -->
+                <div class="setting-group">
+                    <h3>ゲームタイトル</h3>
+                    <div class="add-form">
+                        <input type="text" id="new-game-title" placeholder="新しいゲームタイトル">
+                        <button onclick="addGameTitle()" class="btn">追加</button>
+                    </div>
+                </div>
+
+                <!-- 車種設定 -->
+                <div class="setting-group">
+                    <h3>車種</h3>
+                    <div class="add-form">
+                        <input type="text" id="new-car" placeholder="新しい車種">
+                        <button onclick="addCar()" class="btn">追加</button>
+                    </div>
+                </div>
+
+                <!-- コース設定 -->
+                <div class="setting-group">
+                    <h3>コース</h3>
+                    <div class="add-form">
+                        <input type="text" id="new-course" placeholder="新しいコース">
+                        <button onclick="addCourse()" class="btn">追加</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lap-time-panel">
+                <h2>ラップタイム記録</h2>
+                <form id="lapTimeForm">
+                    <div class="form-group">
+                        <label for="gameTitleSelect">ゲームタイトル</label>
+                        <select id="gameTitleSelect" required onchange="updateCarAndCourseOptions()">
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="carSelect">車種</label>
+                        <select id="carSelect" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="courseSelect">コース</label>
+                        <select id="courseSelect" required>
+                            <option value="">選択してください</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="lapTime">ラップタイム</label>
+                        <input type="text" id="lapTime" pattern="^\d{1,2}:\d{2}\.\d{3}$" placeholder="分:秒.ミリ秒（例：1:23.456）" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="memo">メモ</label>
+                        <textarea id="memo" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn">記録</button>
+                </form>
+            </div>
+
+            <div class="lap-history-panel">
+                <h2>ラップタイム履歴</h2>
+                <div id="lap-history"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初期データの読み込み
+        document.addEventListener('DOMContentLoaded', function() {
+            loadGameTitles();
+            loadLapHistory();
+        });
+
+        // ゲームタイトルの読み込み
+        async function loadGameTitles() {
+            try {
+                const response = await fetch('/api/game-titles');
+                const gameTitles = await response.json();
+                const select = document.getElementById('gameTitleSelect');
+                select.innerHTML = '<option value="">選択してください</option>';
+                gameTitles.forEach(gt => {
+                    const option = document.createElement('option');
+                    option.value = gt.id;
+                    option.textContent = gt.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('ゲームタイトルの読み込みに失敗しました:', error);
+            }
+        }
+
+        // 車種の読み込み
+        async function loadCars(gameTitleId) {
+            try {
+                const response = await fetch(`/api/cars?game_title_id=${gameTitleId}`);
+                const cars = await response.json();
+                const select = document.getElementById('carSelect');
+                select.innerHTML = '<option value="">選択してください</option>';
+                cars.forEach(car => {
+                    const option = document.createElement('option');
+                    option.value = car.id;
+                    option.textContent = car.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('車種の読み込みに失敗しました:', error);
+            }
+        }
+
+        // コースの読み込み
+        async function loadCourses(gameTitleId) {
+            try {
+                const response = await fetch(`/api/courses?game_title_id=${gameTitleId}`);
+                const courses = await response.json();
+                const select = document.getElementById('courseSelect');
+                select.innerHTML = '<option value="">選択してください</option>';
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course.id;
+                    option.textContent = course.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('コースの読み込みに失敗しました:', error);
+            }
+        }
+
+        // ゲームタイトルが変更されたときの処理
+        function updateCarAndCourseOptions() {
+            const gameTitleId = document.getElementById('gameTitleSelect').value;
+            if (gameTitleId) {
+                loadCars(gameTitleId);
+                loadCourses(gameTitleId);
+            } else {
+                document.getElementById('carSelect').innerHTML = '<option value="">選択してください</option>';
+                document.getElementById('courseSelect').innerHTML = '<option value="">選択してください</option>';
+            }
+        }
+
+        // 新しいゲームタイトルの追加
+        async function addGameTitle() {
+            const name = document.getElementById('new-game-title').value.trim();
+            if (!name) return;
+
+            try {
+                const response = await fetch('/api/game-titles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-game-title').value = '';
+                    loadGameTitles();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'ゲームタイトルの追加に失敗しました');
+                }
+            } catch (error) {
+                console.error('ゲームタイトルの追加に失敗しました:', error);
+            }
+        }
+
+        // 新しい車種の追加
+        async function addCar() {
+            const name = document.getElementById('new-car').value.trim();
+            const gameTitleId = document.getElementById('gameTitleSelect').value;
+            if (!name || !gameTitleId) {
+                alert('ゲームタイトルを選択し、車種名を入力してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/cars', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, game_title_id: gameTitleId })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-car').value = '';
+                    loadCars(gameTitleId);
+                } else {
+                    const data = await response.json();
+                    alert(data.error || '車種の追加に失敗しました');
+                }
+            } catch (error) {
+                console.error('車種の追加に失敗しました:', error);
+            }
+        }
+
+        // 新しいコースの追加
+        async function addCourse() {
+            const name = document.getElementById('new-course').value.trim();
+            const gameTitleId = document.getElementById('gameTitleSelect').value;
+            if (!name || !gameTitleId) {
+                alert('ゲームタイトルを選択し、コース名を入力してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/courses', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, game_title_id: gameTitleId })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-course').value = '';
+                    loadCourses(gameTitleId);
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'コースの追加に失敗しました');
+                }
+            } catch (error) {
+                console.error('コースの追加に失敗しました:', error);
+            }
+        }
+
+        // ラップタイムの記録
+        document.getElementById('lapTimeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const gameTitleId = document.getElementById('gameTitleSelect').value;
+            const carId = document.getElementById('carSelect').value;
+            const courseId = document.getElementById('courseSelect').value;
+            const time = document.getElementById('lapTime').value;
+            const memo = document.getElementById('memo').value;
+
+            if (!gameTitleId || !carId || !courseId || !time) {
+                alert('すべての項目を入力してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/lap-times', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        game_title_id: parseInt(gameTitleId),
+                        car_id: parseInt(carId),
+                        course_id: parseInt(courseId),
+                        time: time,
+                        memo: memo
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'ラップタイムの記録に失敗しました');
+                }
+
+                const result = await response.json();
+                alert('ラップタイムを記録しました');
+                document.getElementById('lapTimeForm').reset();
+                loadLapHistory();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        // ラップタイム履歴の読み込み
+        async function loadLapHistory() {
+            try {
+                const response = await fetch('/api/lap-times');
+                const laps = await response.json();
+                const historyDiv = document.getElementById('lap-history');
+                historyDiv.innerHTML = '';
+
+                laps.forEach(lap => {
+                    const lapElement = document.createElement('div');
+                    lapElement.className = 'lap-record';
+                    lapElement.innerHTML = `
+                        <div class="lap-info">
+                            <span class="game-title">${lap.game_title}</span>
+                            <span class="car">${lap.car}</span>
+                            <span class="course">${lap.course}</span>
+                            <span class="lap-time">${lap.time}</span>
+                        </div>
+                        <div class="lap-actions">
+                            <button onclick="deleteLap(${lap.id})" class="btn btn-delete">削除</button>
+                        </div>
+                    `;
+                    historyDiv.appendChild(lapElement);
+                });
+            } catch (error) {
+                console.error('ラップタイム履歴の読み込みに失敗しました:', error);
+            }
+        }
+
+        // ラップタイムの削除
+        async function deleteLap(lapId) {
+            if (!confirm('このラップタイムを削除しますか？')) return;
+
+            try {
+                const response = await fetch(`/api/lap-times/${lapId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadLapHistory();
+                } else {
+                    alert('ラップタイムの削除に失敗しました');
+                }
+            } catch (error) {
+                console.error('ラップタイムの削除に失敗しました:', error);
+            }
+        }
+    </script>
+</body>
+</html> 

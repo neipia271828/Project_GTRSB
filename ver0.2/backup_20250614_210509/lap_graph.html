@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTRラップタイム記録 - 推移グラフ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .graph-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .graph-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .graph-title {
+            margin: 0;
+            color: #2c3e50;
+        }
+
+        .filter-section {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .filter-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 3px;
+        }
+
+        .graph-wrapper {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="graph-container">
+        <div class="graph-header">
+            <h1 class="graph-title">ラップタイム推移</h1>
+            <a href="{{ url_for('dashboard') }}" class="btn">ダッシュボードに戻る</a>
+        </div>
+
+        <div class="filter-section">
+            <form class="filter-form" id="filterForm">
+                <div class="filter-group">
+                    <label for="gameTitleFilter">ゲームタイトル</label>
+                    <select id="gameTitleFilter" onchange="updateFilters()">
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="carFilter">車種</label>
+                    <select id="carFilter">
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="courseFilter">コース</label>
+                    <select id="courseFilter">
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-label">ベストラップ</div>
+                <div class="stat-value" id="bestLap">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">平均ラップ</div>
+                <div class="stat-value" id="avgLap">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">記録数</div>
+                <div class="stat-value" id="recordCount">-</div>
+            </div>
+        </div>
+
+        <div class="graph-wrapper">
+            <canvas id="lapTimeChart"></canvas>
+            <div class="legend" id="chartLegend"></div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        let currentSort = {
+            column: 'created_at',
+            direction: 'asc'
+        };
+
+        // 色のパレット
+        const colorPalette = [
+            '#3498db', // 青
+            '#e74c3c', // 赤
+            '#2ecc71', // 緑
+            '#f1c40f', // 黄
+            '#9b59b6', // 紫
+            '#1abc9c', // ターコイズ
+            '#e67e22', // オレンジ
+            '#34495e', // 濃紺
+            '#16a085', // 深緑
+            '#c0392b'  // 深赤
+        ];
+
+        // 初期データの読み込み
+        document.addEventListener('DOMContentLoaded', function() {
+            loadGameTitles();
+        });
+
+        // ゲームタイトルの読み込み
+        async function loadGameTitles() {
+            try {
+                const response = await fetch('/api/game-titles');
+                const gameTitles = await response.json();
+                const filter = document.getElementById('gameTitleFilter');
+                gameTitles.forEach(gt => {
+                    const option = document.createElement('option');
+                    option.value = gt.id;
+                    option.textContent = gt.name;
+                    filter.appendChild(option);
+                });
+            } catch (error) {
+                console.error('ゲームタイトルの読み込みに失敗しました:', error);
+            }
+        }
+
+        // フィルターの更新
+        async function updateFilters() {
+            const gameTitleId = document.getElementById('gameTitleFilter').value;
+            if (gameTitleId) {
+                await loadCars(gameTitleId);
+                await loadCourses(gameTitleId);
+            } else {
+                document.getElementById('carFilter').innerHTML = '<option value="">選択してください</option>';
+                document.getElementById('courseFilter').innerHTML = '<option value="">選択してください</option>';
+            }
+            loadLapData();
+        }
+
+        // 車種の読み込み
+        async function loadCars(gameTitleId) {
+            try {
+                const response = await fetch(`/api/cars?game_title_id=${gameTitleId}`);
+                const cars = await response.json();
+                const filter = document.getElementById('carFilter');
+                filter.innerHTML = '<option value="">選択してください</option>';
+                cars.forEach(car => {
+                    const option = document.createElement('option');
+                    option.value = car.id;
+                    option.textContent = car.name;
+                    filter.appendChild(option);
+                });
+                filter.onchange = loadLapData;
+            } catch (error) {
+                console.error('車種の読み込みに失敗しました:', error);
+            }
+        }
+
+        // コースの読み込み
+        async function loadCourses(gameTitleId) {
+            try {
+                const response = await fetch(`/api/courses?game_title_id=${gameTitleId}`);
+                const courses = await response.json();
+                const filter = document.getElementById('courseFilter');
+                filter.innerHTML = '<option value="">選択してください</option>';
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course.id;
+                    option.textContent = course.name;
+                    filter.appendChild(option);
+                });
+                filter.onchange = loadLapData;
+            } catch (error) {
+                console.error('コースの読み込みに失敗しました:', error);
+            }
+        }
+
+        // ラップタイムデータの読み込みとグラフ表示
+        async function loadLapData() {
+            try {
+                const gameTitleId = document.getElementById('gameTitleFilter').value;
+                const carId = document.getElementById('carFilter').value;
+                const courseId = document.getElementById('courseFilter').value;
+
+                if (!gameTitleId || !carId || !courseId) {
+                    if (chart) {
+                        chart.destroy();
+                        chart = null;
+                    }
+                    updateStats([]);
+                    return;
+                }
+
+                const response = await fetch('/api/lap-times');
+                const laps = await response.json();
+
+                let filteredLaps = laps.filter(lap => {
+                    if (lap.game_title_id != gameTitleId) return false;
+                    if (lap.car_id != carId) return false;
+                    if (lap.course_id != courseId) return false;
+                    return true;
+                });
+
+                // ユーザーごとにデータをグループ化
+                const userGroups = {};
+                filteredLaps.forEach(lap => {
+                    if (!userGroups[lap.user_id]) {
+                        userGroups[lap.user_id] = {
+                            username: lap.username,
+                            laps: []
+                        };
+                    }
+                    userGroups[lap.user_id].laps.push(lap);
+                });
+
+                // 各ユーザーのデータを日時でソート
+                Object.values(userGroups).forEach(group => {
+                    group.laps.sort((a, b) => {
+                        const dateA = new Date(a.created_at);
+                        const dateB = new Date(b.created_at);
+                        return dateA - dateB;
+                    });
+                });
+
+                updateStats(filteredLaps);
+                updateChart(userGroups);
+            } catch (error) {
+                console.error('ラップタイムデータの読み込みに失敗しました:', error);
+            }
+        }
+
+        // 統計情報の更新
+        function updateStats(laps) {
+            if (laps.length === 0) {
+                document.getElementById('bestLap').textContent = '-';
+                document.getElementById('avgLap').textContent = '-';
+                document.getElementById('recordCount').textContent = '0';
+                return;
+            }
+
+            // ベストラップの計算
+            const bestLap = laps.reduce((minTime, lap) => {
+                const [minutes, seconds] = lap.time.split(':');
+                const time = parseFloat(minutes) * 60 + parseFloat(seconds);
+                return time < minTime ? time : minTime;
+            }, Infinity);
+
+            // 平均ラップの計算
+            const avgLap = laps.reduce((sum, lap) => {
+                const [minutes, seconds] = lap.time.split(':');
+                return sum + (parseFloat(minutes) * 60 + parseFloat(seconds));
+            }, 0) / laps.length;
+
+            // 表示の更新
+            document.getElementById('bestLap').textContent = formatTime(bestLap);
+            document.getElementById('avgLap').textContent = formatTime(avgLap);
+            document.getElementById('recordCount').textContent = laps.length;
+        }
+
+        // グラフの更新
+        function updateChart(userGroups) {
+            const ctx = document.getElementById('lapTimeChart').getContext('2d');
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            if (Object.keys(userGroups).length === 0) {
+                return;
+            }
+
+            const datasets = [];
+            const userIds = Object.keys(userGroups);
+            
+            userIds.forEach((userId, index) => {
+                const group = userGroups[userId];
+                const color = colorPalette[index % colorPalette.length];
+                
+                datasets.push({
+                    label: group.username,
+                    data: group.laps.map((lap, lapIndex) => {
+                        const [minutes, seconds] = lap.time.split(':');
+                        return {
+                            x: lapIndex + 1, // 試行回数
+                            y: parseFloat(minutes) * 60 + parseFloat(seconds),
+                            created_at: new Date(lap.created_at).toLocaleString()
+                        };
+                    }),
+                    borderColor: color,
+                    backgroundColor: color + '20', // 20%の透明度
+                    tension: 0.4,
+                    fill: false
+                });
+            });
+
+            const data = {
+                datasets: datasets
+            };
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'ラップタイム推移'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${formatTime(context.raw.y)}`;
+                                },
+                                title: function(context) {
+                                    const dataPoint = context[0].dataset.data[context[0].dataIndex];
+                                    return `試行回数: ${dataPoint.x}\n日時: ${dataPoint.created_at}`;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: false // カスタム凡例を使用するため非表示
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: {
+                                display: true,
+                                text: '試行回数'
+                            },
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'ラップタイム'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatTime(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // カスタム凡例の更新
+            updateLegend(userGroups);
+        }
+
+        // 凡例の更新
+        function updateLegend(userGroups) {
+            const legend = document.getElementById('chartLegend');
+            legend.innerHTML = '';
+
+            Object.entries(userGroups).forEach(([userId, group], index) => {
+                const color = colorPalette[index % colorPalette.length];
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color" style="background-color: ${color}"></div>
+                    <span>${group.username}</span>
+                `;
+                legend.appendChild(item);
+            });
+        }
+
+        // 時間のフォーマット（秒 → 分:秒.ミリ秒）
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = (seconds % 60).toFixed(3);
+            return `${minutes}:${remainingSeconds.padStart(6, '0')}`;
+        }
+    </script>
+</body>
+</html> 
