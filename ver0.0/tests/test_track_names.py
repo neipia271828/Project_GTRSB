@@ -1,57 +1,61 @@
 import unittest
 import json
-from app import app, db, User, TrackName
+from app import app, db, User, Track
 from datetime import datetime
 
 class TestTrackNames(unittest.TestCase):
     def setUp(self):
-        app.config['TESTING'] = True
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        self.client = app.test_client()
+        self.app = app.test_client()
         self.app_context = app.app_context()
         self.app_context.push()
         db.create_all()
         
-        # テストユーザーの作成
-        test_user = User(kamiyama_id_hash='test_hash')
-        db.session.add(test_user)
-        db.session.commit()
-        
-        # セッションにユーザーIDを設定
-        with self.client.session_transaction() as session:
-            session['user_id'] = test_user.id
+        # テストユーザー登録
+        self.register_user('test@example.com', 'password')
+        # ログインしてトークンを取得
+        self.token = self.login_user('test@example.com', 'password')
 
     def tearDown(self):
         db.session.remove()
         db.drop_all()
         self.app_context.pop()
 
+    def register_user(self, email, password):
+        response = self.app.post('/api/register', json={'email': email, 'password': password})
+        return response
+
+    def login_user(self, email, password):
+        response = self.app.post('/api/login', json={'email': email, 'password': password})
+        return response.json.get('token')
+
     def test_add_track_name_success(self):
         """正常なコース名登録のテスト"""
         data = {
-            'name': 'テストコース',
+            'name': 'テストコース_success',
             'lap_count': 3
         }
-        response = self.client.post(
-            '/api/track-names',
+        response = self.app.post(
+            '/api/tracks',
             data=json.dumps(data),
-            content_type='application/json'
+            content_type='application/json',
+            headers={'Authorization': f'Bearer {self.token}'}
         )
         self.assertEqual(response.status_code, 201)
         data = json.loads(response.data)
-        self.assertIn('track', data)
-        self.assertEqual(data['track']['name'], 'テストコース')
-        self.assertEqual(data['track']['lap_count'], 3)
+        self.assertIn('id', data)
+        self.assertEqual(data['name'], 'テストコース_success')
+        self.assertEqual(data['lap_count'], 3)
 
     def test_add_track_name_missing_name(self):
         """コース名が未指定の場合のテスト"""
         data = {
             'lap_count': 3
         }
-        response = self.client.post(
-            '/api/track-names',
+        response = self.app.post(
+            '/api/tracks',
             data=json.dumps(data),
-            content_type='application/json'
+            content_type='application/json',
+            headers={'Authorization': f'Bearer {self.token}'}
         )
         self.assertEqual(response.status_code, 400)
         data = json.loads(response.data)
@@ -60,13 +64,14 @@ class TestTrackNames(unittest.TestCase):
     def test_add_track_name_invalid_lap_count(self):
         """無効なラップ数のテスト"""
         data = {
-            'name': 'テストコース',
+            'name': 'テストコース_invalid',
             'lap_count': 0
         }
-        response = self.client.post(
-            '/api/track-names',
+        response = self.app.post(
+            '/api/tracks',
             data=json.dumps(data),
-            content_type='application/json'
+            content_type='application/json',
+            headers={'Authorization': f'Bearer {self.token}'}
         )
         self.assertEqual(response.status_code, 400)
         data = json.loads(response.data)
@@ -76,24 +81,26 @@ class TestTrackNames(unittest.TestCase):
         """重複するコース名のテスト"""
         # 最初のコースを登録
         data1 = {
-            'name': 'テストコース',
+            'name': 'テストコース_duplicate',
             'lap_count': 3
         }
-        self.client.post(
-            '/api/track-names',
+        self.app.post(
+            '/api/tracks',
             data=json.dumps(data1),
-            content_type='application/json'
+            content_type='application/json',
+            headers={'Authorization': f'Bearer {self.token}'}
         )
         
         # 同じ名前で再度登録を試みる
         data2 = {
-            'name': 'テストコース',
+            'name': 'テストコース_duplicate',
             'lap_count': 3
         }
-        response = self.client.post(
-            '/api/track-names',
+        response = self.app.post(
+            '/api/tracks',
             data=json.dumps(data2),
-            content_type='application/json'
+            content_type='application/json',
+            headers={'Authorization': f'Bearer {self.token}'}
         )
         self.assertEqual(response.status_code, 400)
         data = json.loads(response.data)

@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, UTC, timedelta
 import os
 import hashlib
 import re
@@ -10,11 +12,24 @@ import logging
 from logging.handlers import RotatingFileHandler
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from flask_cors import CORS
+from functools import wraps
+import jwt
+from flask_migrate import Migrate
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+# アプリケーションのルートディレクトリを取得
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(__name__,
+           template_folder=os.path.join(BASE_DIR, 'templates'),
+           static_folder=os.path.join(BASE_DIR, 'static'))
+app.config['SECRET_KEY'] = 'your-secret-key-here'  # 本番環境では環境変数から読み込むべき
+app.config['JWT_SECRET_KEY'] = app.config['SECRET_KEY']  # JWT用のシークレットキー
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gtrsb.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# CORSの初期化
+CORS(app)
 
 # ロギングの設定
 if not os.path.exists('logs'):
@@ -29,6 +44,10 @@ app.logger.setLevel(logging.INFO)
 app.logger.info('アプリケーション起動')
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 # 診断結果を保持するグローバル変数
 diagnostic_status = {
@@ -57,7 +76,7 @@ def run_diagnostic():
                         diagnostic_status['api_status'] = 'unhealthy'
                         diagnostic_status['error_count'] += 1
                 
-                diagnostic_status['last_check'] = datetime.utcnow()
+                diagnostic_status['last_check'] = datetime.now(UTC)
                 app.logger.info(f'診断完了: {diagnostic_status}')
             
         except Exception as e:
@@ -81,355 +100,354 @@ diagnostic_thread = threading.Thread(target=run_diagnostic, daemon=True)
 diagnostic_thread.start()
 
 # データベースモデル
-class User(db.Model):
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    kamiyama_id_hash = db.Column(db.String(64), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128))
+    records = db.relationship('Record', backref='user', lazy=True)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 class GameTitle(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user = db.relationship('User', backref=db.backref('game_titles', lazy=True))
+    name = db.Column(db.String(100), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    records = db.relationship('Record', backref='game_title', lazy=True)
 
 class CarModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user = db.relationship('User', backref=db.backref('car_models', lazy=True))
+    name = db.Column(db.String(100), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    records = db.relationship('Record', backref='car_model', lazy=True)
 
-class TrackName(db.Model):
+class Track(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    lap_count = db.Column(db.Integer, nullable=False, default=1)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user = db.relationship('User', backref=db.backref('track_names', lazy=True))
+    lap_count = db.Column(db.Integer, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    records = db.relationship('Record', backref='track', lazy=True)
 
-class Lap(db.Model):
-    __tablename__ = 'lap'
+class Record(db.Model):
+    """記録モデル"""
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     game_title_id = db.Column(db.Integer, db.ForeignKey('game_title.id'), nullable=False)
     car_model_id = db.Column(db.Integer, db.ForeignKey('car_model.id'), nullable=False)
-    track_name_id = db.Column(db.Integer, db.ForeignKey('track_name.id'), nullable=False)
-    total_time = db.Column(db.String(10), nullable=False)
-    lap_count = db.Column(db.Integer, nullable=False)
-    note = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # リレーションシップ
-    user = db.relationship('User', backref=db.backref('laps', lazy=True))
-    game_title = db.relationship('GameTitle', backref=db.backref('laps', lazy=True))
-    car_model = db.relationship('CarModel', backref=db.backref('laps', lazy=True))
-    track_name = db.relationship('TrackName', backref=db.backref('track_laps', lazy=True))
-    lap_times = db.relationship('LapTime', backref=db.backref('parent_lap', lazy=True), cascade='all, delete-orphan')
+    track_id = db.Column(db.Integer, db.ForeignKey('track.id'), nullable=False)
+    total_time = db.Column(db.Float, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    lap_times = db.relationship('LapTime', backref='record', lazy=True, cascade='all, delete-orphan')
+
+    def __init__(self, game_title_id, car_model_id, track_id, total_time, created_by):
+        self.game_title_id = game_title_id
+        self.car_model_id = car_model_id
+        self.track_id = track_id
+        self.total_time = total_time
+        self.created_by = created_by
 
 class LapTime(db.Model):
-    __tablename__ = 'lap_time'
     id = db.Column(db.Integer, primary_key=True)
-    lap_id = db.Column(db.Integer, db.ForeignKey('lap.id'), nullable=False)
+    record_id = db.Column(db.Integer, db.ForeignKey('record.id'), nullable=False)
     lap_number = db.Column(db.Integer, nullable=False)
-    time = db.Column(db.String(10), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    time = db.Column(db.String(20), nullable=False)
 
-# メールアドレス検証用の正規表現
-KAMIYAMA_EMAIL_PATTERN = r'^kmc\d{4}@kamiyama\.ac\.jp$'
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# ユーティリティ関数
+# 合計秒数(float)で返す
 
-def validate_kamiyama_email(email):
-    return bool(re.match(KAMIYAMA_EMAIL_PATTERN, email))
+def calculate_total_time(lap_times):
+    total_seconds = 0.0
+    for time in lap_times:
+        minutes, seconds = map(float, time.split(':'))
+        total_seconds += minutes * 60 + seconds
+    return total_seconds
 
+# 表示用: 秒数(float)→MM:SS.mmm形式
+
+def format_time(total_seconds):
+    total_minutes = int(total_seconds // 60)
+    remaining_seconds = total_seconds % 60
+    return f"{total_minutes:02d}:{remaining_seconds:06.3f}"
+
+# JWT認証用デコレーター
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+        if not token:
+            return jsonify({'error': 'トークンが必要です'}), 401
+        try:
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+            current_user = User.query.get(data['user_id'])
+            if not current_user:
+                return jsonify({'error': 'ユーザーが存在しません'}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'トークンの有効期限が切れています'}), 401
+        except Exception as e:
+            return jsonify({'error': 'トークンが無効です', 'detail': str(e)}), 401
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+# ルート
 @app.route('/')
 def index():
     return render_template('index.html')
 
+def validate_email(email):
+    """メールアドレスのバリデーション"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
+
+def validate_password(password):
+    """パスワードのバリデーション"""
+    return len(password) >= 8
+
 @app.route('/api/register', methods=['POST'])
 def register():
+    """ユーザー登録"""
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
     
-    if not email or not password:
-        return jsonify({'error': 'メールアドレスとパスワードは必須です'}), 400
+    if not data or not data.get('email') or not data.get('password'):
+        return jsonify({'error': 'メールアドレスとパスワードが必要です'}), 400
     
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        return jsonify({'error': '有効なメールアドレスを入力してください'}), 400
+    if not validate_email(data['email']):
+        return jsonify({'error': '無効なメールアドレス形式です'}), 400
     
-    email_hash = hashlib.sha256(email.encode()).hexdigest()
+    if not validate_password(data['password']):
+        return jsonify({'error': 'パスワードは8文字以上必要です'}), 400
     
-    if User.query.filter_by(kamiyama_id_hash=email_hash).first():
+    if User.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'このメールアドレスは既に登録されています'}), 400
     
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    user = User(email=data['email'])
+    user.set_password(data['password'])
     
-    new_user = User(
-        kamiyama_id_hash=email_hash
-    )
-    
-    db.session.add(new_user)
-    db.session.commit()
-    
-    return jsonify({'message': '登録が完了しました'}), 201
+    try:
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({'message': 'ユーザー登録が完了しました'}), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"ユーザー登録エラー: {str(e)}")
+        return jsonify({'error': 'ユーザー登録に失敗しました'}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    
-    if not email or not password:
-        return jsonify({'error': 'メールアドレスとパスワードは必須です'}), 400
-    
-    email_hash = hashlib.sha256(email.encode()).hexdigest()
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    
-    user = User.query.filter_by(kamiyama_id_hash=email_hash).first()
-    
-    if not user:
-        return jsonify({'error': 'メールアドレスまたはパスワードが正しくありません'}), 401
-    
-    session['user_id'] = user.id
-    return jsonify({'message': 'ログインしました'}), 200
+    user = User.query.filter_by(email=data['email']).first()
+    if user and user.check_password(data['password']):
+        login_user(user)
+        token = jwt.encode(
+            {
+                'user_id': user.id,
+                'exp': datetime.now(UTC) + timedelta(days=1)  # トークンの有効期限を1日に設定
+            },
+            app.config['JWT_SECRET_KEY'],
+            algorithm='HS256'
+        )
+        return jsonify({
+            'id': user.id,
+            'email': user.email,
+            'token': token
+        })
+    return jsonify({'error': 'メールアドレスまたはパスワードが正しくありません'}), 401
 
+@app.route('/api/logout')
+@login_required
+def logout():
+    logout_user()
+    return jsonify({'message': 'ログアウトしました'})
+
+# ゲームタイトルAPI
 @app.route('/api/game-titles', methods=['GET'])
-def get_game_titles():
-    titles = GameTitle.query.order_by(GameTitle.name).all()
-    return jsonify([{'id': title.id, 'name': title.name} for title in titles])
-
-@app.route('/api/car-models', methods=['GET'])
-def get_car_models():
-    models = CarModel.query.order_by(CarModel.name).all()
-    return jsonify([{'id': model.id, 'name': model.name} for model in models])
-
-@app.route('/api/track-names', methods=['GET'])
-def get_track_names():
-    if 'user_id' not in session:
-        return jsonify({'error': 'ログインが必要です'}), 401
-    
-    tracks = TrackName.query.all()
+@token_required
+def get_game_titles(current_user):
+    game_titles = GameTitle.query.all()
     return jsonify([{
+        'id': gt.id,
+        'name': gt.name
+    } for gt in game_titles])
+
+@app.route('/api/game-titles', methods=['POST'])
+@token_required
+def create_game_title(current_user):
+    """ゲームタイトルの作成"""
+    data = request.get_json()
+    
+    if not data or not data.get('name'):
+        return jsonify({'error': 'ゲームタイトル名が必要です'}), 400
+    
+    # 重複チェック
+    if GameTitle.query.filter_by(name=data['name']).first():
+        return jsonify({'error': 'このゲームタイトルは既に存在します'}), 400
+    
+    game_title = GameTitle(name=data['name'], created_by=current_user.id)
+    
+    try:
+        db.session.add(game_title)
+        db.session.commit()
+        return jsonify({
+            'message': 'ゲームタイトルが作成されました',
+            'game_title_id': game_title.id
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"ゲームタイトル作成エラー: {str(e)}")
+        return jsonify({'error': 'ゲームタイトルの作成に失敗しました'}), 500
+
+# 車種API
+@app.route('/api/car-models', methods=['GET'])
+@token_required
+def get_car_models(current_user):
+    car_models = CarModel.query.all()
+    return jsonify([{
+        'id': cm.id,
+        'name': cm.name
+    } for cm in car_models])
+
+@app.route('/api/car-models', methods=['POST'])
+@token_required
+def add_car_model(current_user):
+    data = request.get_json()
+    if CarModel.query.filter_by(name=data['name']).first():
+        return jsonify({'error': 'この車種は既に登録されています'}), 400
+    
+    car_model = CarModel(
+        name=data['name'],
+        created_by=current_user.id
+    )
+    db.session.add(car_model)
+    db.session.commit()
+    return jsonify({
+        'id': car_model.id,
+        'name': car_model.name
+    }), 201
+
+# コースAPI
+@app.route('/api/tracks', methods=['GET'])
+@token_required
+def get_tracks(current_user):
+    tracks = Track.query.all()
+    return jsonify([{
+        'id': t.id,
+        'name': t.name,
+        'lap_count': t.lap_count
+    } for t in tracks])
+
+@app.route('/api/tracks', methods=['POST'])
+@token_required
+def add_track(current_user):
+    data = request.get_json()
+    if not data or not data.get('name'):
+        return jsonify({'error': 'コース名が必要です'}), 400
+    if Track.query.filter_by(name=data['name']).first():
+        return jsonify({'error': 'このコースは既に登録されています'}), 400
+    if not isinstance(data.get('lap_count'), int) or data['lap_count'] < 1:
+        return jsonify({'error': 'ラップ数は1以上の整数を指定してください'}), 400
+    track = Track(
+        name=data['name'],
+        lap_count=data['lap_count'],
+        created_by=current_user.id
+    )
+    db.session.add(track)
+    db.session.commit()
+    return jsonify({
         'id': track.id,
         'name': track.name,
         'lap_count': track.lap_count
-    } for track in tracks])
+    }), 201
 
-@app.route('/api/game-titles', methods=['POST'])
-def add_game_title():
-    if 'user_id' not in session:
-        return jsonify({'error': 'ログインが必要です'}), 401
-
-    data = request.get_json()
-    name = data.get('name')
-
-    if not name:
-        return jsonify({'error': 'ゲームタイトルを入力してください'}), 400
-
-    if GameTitle.query.filter_by(name=name).first():
-        return jsonify({'error': 'このゲームタイトルは既に登録されています'}), 400
-
-    new_title = GameTitle(
-        name=name,
-        created_by=session['user_id']
-    )
-
-    db.session.add(new_title)
-    db.session.commit()
-
-    return jsonify({'id': new_title.id, 'name': new_title.name}), 201
-
-@app.route('/api/car-models', methods=['POST'])
-def add_car_model():
-    if 'user_id' not in session:
-        return jsonify({'error': 'ログインが必要です'}), 401
-
-    data = request.get_json()
-    name = data.get('name')
-
-    if not name:
-        return jsonify({'error': '車種を入力してください'}), 400
-
-    if CarModel.query.filter_by(name=name).first():
-        return jsonify({'error': 'この車種は既に登録されています'}), 400
-
-    new_model = CarModel(
-        name=name,
-        created_by=session['user_id']
-    )
-
-    db.session.add(new_model)
-    db.session.commit()
-
-    return jsonify({'id': new_model.id, 'name': new_model.name}), 201
-
-@app.route('/api/track-names', methods=['POST'])
-def add_track_name():
-    try:
-        if 'user_id' not in session:
-            return jsonify({'error': 'ログインが必要です'}), 401
-
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'リクエストデータが不正です'}), 400
-
-        name = data.get('name')
-        lap_count = data.get('lap_count', 1)
-
-        if not name or not isinstance(name, str) or len(name.strip()) == 0:
-            return jsonify({'error': 'コース名は必須です'}), 400
-
-        if not isinstance(lap_count, int) or lap_count < 1:
-            return jsonify({'error': 'ラップ数は1以上の整数を指定してください'}), 400
-
-        # 既存のコース名をチェック（大文字小文字を区別しない）
-        existing_track = TrackName.query.filter(
-            db.func.lower(TrackName.name) == db.func.lower(name)
-        ).first()
-        
-        if existing_track:
-            return jsonify({'error': 'このコース名は既に登録されています'}), 400
-
-        new_track = TrackName(
-            name=name.strip(),
-            lap_count=lap_count,
-            created_by=session['user_id']
-        )
-        db.session.add(new_track)
-        db.session.commit()
-
-        return jsonify({
-            'message': 'コースを登録しました',
-            'track': {
-                'id': new_track.id,
-                'name': new_track.name,
-                'lap_count': new_track.lap_count
-            }
-        }), 201
-
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f'コース登録エラー: {str(e)}')
-        return jsonify({'error': 'コースの登録に失敗しました'}), 500
-
-@app.route('/api/laps', methods=['POST'])
-def add_lap():
-    if 'user_id' not in session:
-        return jsonify({'error': 'ログインが必要です'}), 401
+# 記録API
+@app.route('/api/records', methods=['GET'])
+@token_required
+def get_records(current_user):
+    filters = {}
+    if request.args.get('game_title_id'):
+        filters['game_title_id'] = request.args.get('game_title_id')
+    if request.args.get('car_model_id'):
+        filters['car_model_id'] = request.args.get('car_model_id')
+    if request.args.get('track_id'):
+        filters['track_id'] = request.args.get('track_id')
+    if request.args.get('user_id'):
+        filters['user_id'] = request.args.get('user_id')
     
-    data = request.get_json()
-    
-    # 必須フィールドの確認
-    required_fields = ['game_title_id', 'car_model_id', 'track_name_id', 'lap_times']
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': '必須フィールドが不足しています'}), 400
-    
-    try:
-        # ラップタイムの合計を計算
-        total_seconds = 0
-        lap_times = data['lap_times']
-        # lap_timesがdictのリストかstrのリストか判定
-        if isinstance(lap_times[0], dict):
-            lap_time_strs = [lt['time'] for lt in lap_times]
-        else:
-            lap_time_strs = lap_times
-        for lap_time in lap_time_strs:
-            minutes, seconds = map(float, lap_time.split(':'))
-            total_seconds += minutes * 60 + seconds
-        total_minutes = int(total_seconds // 60)
-        total_seconds = total_seconds % 60
-        total_time = f"{total_minutes:02d}:{total_seconds:06.3f}"
-        
-        # 新しいラップ記録を作成
-        lap = Lap(
-            user_id=session['user_id'],
-            game_title_id=data['game_title_id'],
-            car_model_id=data['car_model_id'],
-            track_name_id=data['track_name_id'],
-            total_time=total_time,
-            lap_count=len(lap_time_strs),
-            note=data.get('note', '')
-        )
-        db.session.add(lap)
-        db.session.flush()  # IDを生成するためにflush
-        
-        # 各ラップの時間を記録
-        for i, lap_time in enumerate(lap_time_strs, 1):
-            lap_time_record = LapTime(
-                lap_id=lap.id,
-                lap_number=i,
-                time=lap_time
-            )
-            db.session.add(lap_time_record)
-        
-        db.session.commit()
-        return jsonify({'message': 'ラップタイムが記録されました'}), 201
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/laps', methods=['GET'])
-def get_laps():
-    if 'user_id' not in session:
-        return jsonify({'error': 'ログインが必要です'}), 401
-    
-    game_title_id = request.args.get('game_title_id', type=int)
-    car_model_id = request.args.get('car_model_id', type=int)
-    track_name_id = request.args.get('track_name_id', type=int)
-    
-    query = Lap.query.filter_by(user_id=session['user_id'])
-    
-    if game_title_id:
-        query = query.filter_by(game_title_id=game_title_id)
-    if car_model_id:
-        query = query.filter_by(car_model_id=car_model_id)
-    if track_name_id:
-        query = query.filter_by(track_name_id=track_name_id)
-    
-    laps = query.order_by(Lap.created_at.desc()).all()
-    
+    records = Record.query.filter_by(**filters).order_by(Record.total_time).all()
     return jsonify([{
-        'id': lap.id,
-        'game_title': lap.game_title.name,
-        'car_model': lap.car_model.name,
-        'track_name': lap.track_name.name,
-        'total_time': lap.total_time,
-        'lap_count': lap.lap_count,
+        'id': r.id,
+        'user': r.user.email,
+        'game_title': r.game_title.name,
+        'car_model': r.car_model.name,
+        'track': r.track.name,
+        'total_time': format_time(r.total_time),
         'lap_times': [{
             'lap_number': lt.lap_number,
             'time': lt.time
-        } for lt in lap.lap_times],
-        'note': lap.note,
-        'created_at': lap.created_at.isoformat()
-    } for lap in laps])
+        } for lt in r.lap_times],
+        'comment': getattr(r, 'comment', None),
+        'created_at': r.created_at.isoformat()
+    } for r in records])
 
-@app.route('/api/leaderboard', methods=['GET'])
-def get_leaderboard():
-    game_title_id = request.args.get('game_title_id')
-    car_model_id = request.args.get('car_model_id')
-    track_name_id = request.args.get('track_name_id')
-
-    if not all([game_title_id, car_model_id, track_name_id]):
-        return jsonify({'error': 'ゲームタイトル、車種、コースを選択してください'}), 400
-
-    query = Lap.query.filter_by(
-        game_title_id=game_title_id,
-        car_model_id=car_model_id,
-        track_name_id=track_name_id
-    ).join(User).order_by(Lap.lap_time)
-
-    laps = query.all()
+@app.route('/api/records', methods=['POST'])
+@token_required
+def add_record(current_user):
+    data = request.get_json()
     
-    return jsonify([{
-        'username': lap.user.username,
-        'lap_time': lap.lap_time,
-        'recorded_at': lap.recorded_at.isoformat(),
-        'notes': lap.notes
-    } for lap in laps])
+    # バリデーション
+    if not all(key in data for key in ['game_title_id', 'car_model_id', 'track_id', 'lap_times']):
+        return jsonify({'error': '必要な情報が不足しています'}), 400
+    
+    track = Track.query.get(data['track_id'])
+    if not track:
+        return jsonify({'error': '指定されたコースが見つかりません'}), 404
+    
+    if len(data['lap_times']) != track.lap_count:
+        return jsonify({'error': f'ラップタイムの数が正しくありません（{track.lap_count}周のコースです）'}), 400
+    
+    # ラップタイムのバリデーション
+    for time in data['lap_times']:
+        if not re.match(r'^\d{2}:\d{2}\.\d{3}$', time):
+            return jsonify({'error': 'ラップタイムの形式が正しくありません（MM:SS.mmm）'}), 400
+    
+    # 全体タイムの計算
+    total_time = calculate_total_time(data['lap_times'])
+    
+    # 記録の作成
+    record = Record(
+        game_title_id=data['game_title_id'],
+        car_model_id=data['car_model_id'],
+        track_id=data['track_id'],
+        total_time=total_time,
+        created_by=current_user.id
+    )
+    db.session.add(record)
+    db.session.flush()  # IDを生成
+    
+    # ラップタイムの作成
+    for i, time in enumerate(data['lap_times'], 1):
+        lap_time = LapTime(
+            record_id=record.id,
+            lap_number=i,
+            time=time
+        )
+        db.session.add(lap_time)
+    
+    db.session.commit()
+    return jsonify({
+        'id': record.id,
+        'total_time': format_time(record.total_time),
+        'created_at': record.created_at.isoformat()
+    }), 201
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -441,7 +459,7 @@ def health_check():
         
         return jsonify({
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'database': 'connected',
             'api': 'running'
         }), 200
@@ -450,7 +468,7 @@ def health_check():
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 500
 
 @app.route('/api/diagnostic', methods=['GET'])

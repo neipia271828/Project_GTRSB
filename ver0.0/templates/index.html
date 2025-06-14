@@ -3,974 +3,265 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GTRラップタイム記録</title>
+    <title>GTRSB - ラップタイム記録システム</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #000;
-            color: #fff;
-            font-family: 'Arial', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        .lap-time-input {
+            margin-bottom: 10px;
         }
-
-        .container {
-            width: 90%;
+        .record-form {
             max-width: 800px;
-            margin: 2rem auto;
-            padding: 1rem;
+            margin: 0 auto;
         }
-
-        .form-container {
-            background-color: #111;
-            padding: 2rem;
-            border-radius: 8px;
-            margin-bottom: 2rem;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .select-group {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .select-group select {
-            flex: 1;
-        }
-
-        .select-group button {
-            width: auto;
-            white-space: nowrap;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background-color: #111;
-            margin: 15% auto;
-            padding: 2rem;
-            border-radius: 8px;
-            width: 80%;
-            max-width: 500px;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .close {
-            color: #aaa;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover {
-            color: #fff;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 0.5rem;
-            margin-bottom: 1rem;
-            background-color: #222;
-            border: 1px solid #333;
-            color: #fff;
-            border-radius: 4px;
-        }
-
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
-        }
-
-        button:hover {
-            background-color: #45a049;
-        }
-
-        .error {
-            color: #ff4444;
-            margin-bottom: 1rem;
-        }
-
-        .success {
-            color: #4CAF50;
-            margin-bottom: 1rem;
-        }
-
         .leaderboard {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 2rem;
+            margin-top: 30px;
         }
-
-        .leaderboard th, .leaderboard td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid #333;
-        }
-
-        .leaderboard th {
-            background-color: #111;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .tab-container {
-            margin-bottom: 2rem;
-        }
-
-        .tab-button {
-            background-color: #333;
-            color: white;
-            padding: 0.5rem 1rem;
-            border: none;
-            cursor: pointer;
-            margin-right: 0.5rem;
-        }
-
-        .tab-button.active {
-            background-color: #4CAF50;
+        .filter-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div id="auth-container">
-            <div class="tab-container">
-                <button class="tab-button active" onclick="showTab('login')">ログイン</button>
-                <button class="tab-button" onclick="showTab('register')">新規登録</button>
-            </div>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">GTRSB - ラップタイム記録システム</h1>
 
-            <div id="login-form" class="form-container">
-                <h2>ログイン</h2>
-                <div class="form-group">
-                    <label for="login-email">メールアドレス</label>
-                    <input type="email" id="login-email" placeholder="kmcXXXX@kamiyama.ac.jp">
+        <!-- ログイン/登録フォーム -->
+        <div id="auth-section" class="mb-4">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">ログイン</div>
+                        <div class="card-body">
+                            <form id="login-form">
+                                <div class="mb-3">
+                                    <label for="login-email" class="form-label">メールアドレス</label>
+                                    <input type="email" class="form-control" id="login-email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="login-password" class="form-label">パスワード</label>
+                                    <input type="password" class="form-control" id="login-password" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">ログイン</button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="login-password">パスワード</label>
-                    <input type="password" id="login-password" placeholder="4桁の数字">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">新規登録</div>
+                        <div class="card-body">
+                            <form id="register-form">
+                                <div class="mb-3">
+                                    <label for="register-email" class="form-label">メールアドレス</label>
+                                    <input type="email" class="form-control" id="register-email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="register-password" class="form-label">パスワード</label>
+                                    <input type="password" class="form-control" id="register-password" required>
+                                </div>
+                                <button type="submit" class="btn btn-success">登録</button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-                <button onclick="login()">ログイン</button>
-                <div id="login-error" class="error hidden"></div>
-            </div>
-
-            <div id="register-form" class="form-container hidden">
-                <h2>新規登録</h2>
-                <div class="form-group">
-                    <label for="register-email">メールアドレス</label>
-                    <input type="email" id="register-email" placeholder="kmcXXXX@kamiyama.ac.jp">
-                </div>
-                <div class="form-group">
-                    <label for="register-password">パスワード</label>
-                    <input type="password" id="register-password" placeholder="4桁の数字">
-                </div>
-                <div class="form-group">
-                    <label for="register-username">ユーザー名</label>
-                    <input type="text" id="register-username" placeholder="表示名">
-                </div>
-                <button onclick="register()">登録</button>
-                <div id="register-error" class="error hidden"></div>
             </div>
         </div>
 
-        <div id="main-container" class="hidden">
-            <div class="form-container">
-                <h2>ラップタイム記録</h2>
-                <div class="form-group">
-                    <label for="game-title">ゲームタイトル</label>
-                    <div class="select-group">
-                        <select id="game-title">
+        <!-- 記録フォーム -->
+        <div id="record-section" class="record-form" style="display: none;">
+            <h2 class="mb-4">記録登録</h2>
+            <form id="record-form">
+                <!-- ゲームタイトル -->
+                <div class="mb-3">
+                    <label for="game-title" class="form-label">ゲームタイトル</label>
+                    <div class="input-group">
+                        <select class="form-select" id="game-title" required>
                             <option value="">選択してください</option>
                         </select>
-                        <button onclick="showAddModal('game-title')">新規登録</button>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#newGameTitleModal">
+                            新規登録
+                        </button>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="car-model">車種</label>
-                    <div class="select-group">
-                        <select id="car-model">
+
+                <!-- コース -->
+                <div class="mb-3">
+                    <label for="track" class="form-label">コース</label>
+                    <div class="input-group">
+                        <select class="form-select" id="track" required>
                             <option value="">選択してください</option>
                         </select>
-                        <button onclick="showAddModal('car-model')">新規登録</button>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#newTrackModal">
+                            新規登録
+                        </button>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="track-name">コース名</label>
-                    <div class="select-group">
-                        <select id="track-name">
+
+                <!-- 車種 -->
+                <div class="mb-3">
+                    <label for="car-model" class="form-label">車種</label>
+                    <div class="input-group">
+                        <select class="form-select" id="car-model" required>
                             <option value="">選択してください</option>
                         </select>
-                        <button onclick="showAddModal('track-name')">新規登録</button>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#newCarModelModal">
+                            新規登録
+                        </button>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="lapTimes">ラップタイム（分:秒）</label>
-                    <div id="lapTimesContainer">
-                        <div class="lap-time-input">
-                            <input type="text" class="form-control lap-time" placeholder="例: 01:30" pattern="[0-9]{2}:[0-9]{2}" required>
-                            <button type="button" class="btn btn-danger remove-lap" style="display: none;">削除</button>
-                        </div>
+
+                <!-- ラップタイム入力欄 -->
+                <div id="lap-times-container" class="mb-3">
+                    <label class="form-label">ラップタイム</label>
+                    <!-- ラップタイム入力欄は動的に生成 -->
+                </div>
+
+                <!-- 全体タイム -->
+                <div class="mb-3">
+                    <label for="total-time" class="form-label">全体タイム</label>
+                    <input type="text" class="form-control" id="total-time" readonly>
+                </div>
+
+                <!-- コメント -->
+                <div class="mb-3">
+                    <label for="comment" class="form-label">コメント</label>
+                    <textarea class="form-control" id="comment" rows="3"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary">記録を保存</button>
+            </form>
+        </div>
+
+        <!-- リーダーボード -->
+        <div id="leaderboard-section" class="leaderboard" style="display: none;">
+            <h2 class="mb-4">リーダーボード</h2>
+            
+            <!-- フィルター -->
+            <div class="filter-section">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="filter-game-title" class="form-label">ゲームタイトル</label>
+                        <select class="form-select" id="filter-game-title">
+                            <option value="">すべて</option>
+                        </select>
                     </div>
-                    <button type="button" class="btn btn-secondary" id="addLapTime">ラップを追加</button>
-                    <div id="totalTime" class="mt-2">
-                        <strong>合計タイム: </strong><span>00:00</span>
+                    <div class="col-md-3">
+                        <label for="filter-track" class="form-label">コース</label>
+                        <select class="form-select" id="filter-track">
+                            <option value="">すべて</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filter-car-model" class="form-label">車種</label>
+                        <select class="form-select" id="filter-car-model">
+                            <option value="">すべて</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filter-user" class="form-label">記録者</label>
+                        <select class="form-select" id="filter-user">
+                            <option value="">すべて</option>
+                        </select>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="note">メモ</label>
-                    <textarea class="form-control" id="note" rows="3"></textarea>
-                </div>
-                <button onclick="addLap()">記録</button>
-                <div id="lap-error" class="error hidden"></div>
             </div>
 
-            <div class="form-container">
-                <h2>リーダーボード</h2>
-                <div class="form-group">
-                    <label for="leaderboard-game">ゲームタイトル</label>
-                    <select id="leaderboard-game">
-                        <option value="">選択してください</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="leaderboard-car">車種</label>
-                    <select id="leaderboard-car">
-                        <option value="">選択してください</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="leaderboard-track">コース名</label>
-                    <select id="leaderboard-track">
-                        <option value="">選択してください</option>
-                    </select>
-                </div>
-                <button onclick="getLeaderboard()">表示</button>
-                <div id="leaderboard-error" class="error hidden"></div>
-                <table class="leaderboard">
+            <!-- リーダーボードテーブル -->
+            <div class="table-responsive">
+                <table class="table table-striped">
                     <thead>
                         <tr>
                             <th>順位</th>
-                            <th>ユーザー名</th>
+                            <th>記録者</th>
+                            <th>ゲームタイトル</th>
+                            <th>コース</th>
+                            <th>車種</th>
+                            <th>全体タイム</th>
                             <th>ラップタイム</th>
+                            <th>コメント</th>
                             <th>記録日時</th>
-                            <th>メモ</th>
                         </tr>
                     </thead>
                     <tbody id="leaderboard-body">
+                        <!-- データは動的に生成 -->
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- 新規登録モーダル -->
-    <div id="add-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-title">新規登録</h3>
-                <span class="close" onclick="closeModal()">&times;</span>
-            </div>
-            <div class="form-group">
-                <input type="text" id="new-item-name" placeholder="名前を入力">
-            </div>
-            <button onclick="addNewItem()">登録</button>
-            <div id="modal-error" class="error hidden"></div>
-        </div>
-    </div>
-
-    <!-- 診断情報モーダル -->
-    <div id="diagnosticModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>システム診断情報</h2>
-            <div id="diagnosticInfo">
-                <p>最終診断時刻: <span id="lastCheck">-</span></p>
-                <p>データベース状態: <span id="dbStatus">-</span></p>
-                <p>API状態: <span id="apiStatus">-</span></p>
-                <p>エラー数: <span id="errorCount">-</span></p>
-            </div>
-        </div>
-    </div>
-
-    <!-- コース登録モーダル -->
-    <div id="trackModal" class="modal">
-        <div class="modal-content">
-            <h2>コース登録</h2>
-            <form id="trackForm">
-                <div class="form-group">
-                    <label for="trackName">コース名:</label>
-                    <input type="text" id="trackName" name="trackName" required>
+    <!-- 新規ゲームタイトル登録モーダル -->
+    <div class="modal fade" id="newGameTitleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">新規ゲームタイトル登録</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="form-group">
-                    <label for="lapCount">ラップ数:</label>
-                    <input type="number" id="lapCount" name="lapCount" min="1" value="1" required>
+                <div class="modal-body">
+                    <form id="new-game-title-form">
+                        <div class="mb-3">
+                            <label for="new-game-title" class="form-label">ゲームタイトル</label>
+                            <input type="text" class="form-control" id="new-game-title" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">登録</button>
+                    </form>
                 </div>
-                <button type="submit">登録</button>
-            </form>
-            <button onclick="closeTrackModal()">閉じる</button>
+            </div>
         </div>
     </div>
 
-    <script>
-        let currentModalType = '';
-        let gameTitles = [];
-        let carModels = [];
-        let trackNames = [];
-
-        // ページ読み込み時にデータを取得
-        window.onload = async function() {
-            await Promise.all([
-                fetchGameTitles(),
-                fetchCarModels(),
-                fetchTrackNames()
-            ]);
-        };
-
-        async function fetchGameTitles() {
-            try {
-                const response = await fetch('/api/game-titles');
-                const data = await response.json();
-                gameTitles = data;
-                updateGameTitleSelects();
-            } catch (error) {
-                console.error('ゲームタイトルの取得に失敗しました:', error);
-            }
-        }
-
-        async function fetchCarModels() {
-            try {
-                const response = await fetch('/api/car-models');
-                const data = await response.json();
-                carModels = data;
-                updateCarModelSelects();
-            } catch (error) {
-                console.error('車種の取得に失敗しました:', error);
-            }
-        }
-
-        async function fetchTrackNames() {
-            try {
-                const response = await fetch('/api/track-names');
-                const data = await response.json();
-                trackNames = data;
-                updateTrackNameSelects();
-            } catch (error) {
-                console.error('コース名の取得に失敗しました:', error);
-            }
-        }
-
-        function updateGameTitleSelects() {
-            const selects = ['game-title', 'leaderboard-game'];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                select.innerHTML = '<option value="">選択してください</option>';
-                gameTitles.forEach(title => {
-                    const option = document.createElement('option');
-                    option.value = title.id;
-                    option.textContent = title.name;
-                    select.appendChild(option);
-                });
-            });
-        }
-
-        function updateCarModelSelects() {
-            const selects = ['car-model', 'leaderboard-car'];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                select.innerHTML = '<option value="">選択してください</option>';
-                carModels.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.id;
-                    option.textContent = model.name;
-                    select.appendChild(option);
-                });
-            });
-        }
-
-        function updateTrackNameSelects() {
-            const selects = ['track-name', 'leaderboard-track'];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                select.innerHTML = '<option value="">選択してください</option>';
-                trackNames.forEach(track => {
-                    const option = document.createElement('option');
-                    option.value = track.id;
-                    option.textContent = track.name;
-                    select.appendChild(option);
-                });
-            });
-        }
-
-        function showAddModal(type) {
-            currentModalType = type;
-            const modal = document.getElementById('add-modal');
-            const title = document.getElementById('modal-title');
-            
-            switch(type) {
-                case 'game-title':
-                    title.textContent = 'ゲームタイトルの新規登録';
-                    break;
-                case 'car-model':
-                    title.textContent = '車種の新規登録';
-                    break;
-                case 'track-name':
-                    title.textContent = 'コース名の新規登録';
-                    break;
-            }
-            
-            document.getElementById('new-item-name').value = '';
-            document.getElementById('modal-error').classList.add('hidden');
-            modal.style.display = 'block';
-        }
-
-        function closeModal() {
-            document.getElementById('add-modal').style.display = 'none';
-        }
-
-        async function addNewItem() {
-            const name = document.getElementById('new-item-name').value;
-            if (!name) {
-                document.getElementById('modal-error').textContent = '名前を入力してください';
-                document.getElementById('modal-error').classList.remove('hidden');
-                return;
-            }
-
-            let endpoint = '';
-            switch(currentModalType) {
-                case 'game-title':
-                    endpoint = '/api/game-titles';
-                    break;
-                case 'car-model':
-                    endpoint = '/api/car-models';
-                    break;
-                case 'track-name':
-                    endpoint = '/api/track-names';
-                    break;
-            }
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    switch(currentModalType) {
-                        case 'game-title':
-                            gameTitles.push(data);
-                            updateGameTitleSelects();
-                            break;
-                        case 'car-model':
-                            carModels.push(data);
-                            updateCarModelSelects();
-                            break;
-                        case 'track-name':
-                            trackNames.push(data);
-                            updateTrackNameSelects();
-                            break;
-                    }
-                    closeModal();
-                } else {
-                    document.getElementById('modal-error').textContent = data.error;
-                    document.getElementById('modal-error').classList.remove('hidden');
-                }
-            } catch (error) {
-                document.getElementById('modal-error').textContent = 'エラーが発生しました';
-                document.getElementById('modal-error').classList.remove('hidden');
-            }
-        }
-
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.classList.remove('active');
-            });
-            document.querySelector(`[onclick="showTab('${tabName}')"]`).classList.add('active');
-
-            document.getElementById('login-form').classList.toggle('hidden', tabName !== 'login');
-            document.getElementById('register-form').classList.toggle('hidden', tabName !== 'register');
-        }
-
-        async function register() {
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-            const username = document.getElementById('register-username').value;
-
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email, password, username }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showTab('login');
-                    document.getElementById('register-error').classList.add('hidden');
-                    document.getElementById('login-error').textContent = '登録が完了しました。ログインしてください。';
-                    document.getElementById('login-error').classList.remove('hidden');
-                } else {
-                    document.getElementById('register-error').textContent = data.error;
-                    document.getElementById('register-error').classList.remove('hidden');
-                }
-            } catch (error) {
-                document.getElementById('register-error').textContent = 'エラーが発生しました';
-                document.getElementById('register-error').classList.remove('hidden');
-            }
-        }
-
-        async function login() {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email, password }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showMainContainer();
-                } else {
-                    document.getElementById('login-error').textContent = data.error;
-                    document.getElementById('login-error').classList.remove('hidden');
-                }
-            } catch (error) {
-                document.getElementById('login-error').textContent = 'エラーが発生しました';
-                document.getElementById('login-error').classList.remove('hidden');
-            }
-        }
-
-        async function addLap() {
-            const gameTitleId = document.getElementById('game-title').value;
-            const carModelId = document.getElementById('car-model').value;
-            const trackNameId = document.getElementById('track-name').value;
-            const lapTimes = Array.from(document.querySelectorAll('.lap-time')).map(input => input.value);
-            const note = document.getElementById('note').value;
-
-            if (!gameTitleId || !carModelId || !trackNameId || lapTimes.length === 0) {
-                document.getElementById('lap-error').textContent = 'すべての項目を入力してください';
-                document.getElementById('lap-error').classList.remove('hidden');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/laps', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        game_title_id: gameTitleId,
-                        car_model_id: carModelId,
-                        track_name_id: trackNameId,
-                        lap_times: lapTimes,
-                        note: note
-                    }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('lap-error').classList.add('hidden');
-                    document.getElementById('lapTimesContainer').innerHTML = `
-                        <div class="lap-time-input">
-                            <input type="text" class="form-control lap-time" placeholder="例: 01:30" pattern="[0-9]{2}:[0-9]{2}" required>
-                            <button type="button" class="btn btn-danger remove-lap" style="display: none;">削除</button>
+    <!-- 新規コース登録モーダル -->
+    <div class="modal fade" id="newTrackModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">新規コース登録</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-track-form">
+                        <div class="mb-3">
+                            <label for="new-track-name" class="form-label">コース名</label>
+                            <input type="text" class="form-control" id="new-track-name" required>
                         </div>
-                    `;
-                    document.getElementById('note').value = '';
-                    getLeaderboard();
-                } else {
-                    document.getElementById('lap-error').textContent = data.error;
-                    document.getElementById('lap-error').classList.remove('hidden');
-                }
-            } catch (error) {
-                document.getElementById('lap-error').textContent = 'エラーが発生しました';
-                document.getElementById('lap-error').classList.remove('hidden');
-            }
-        }
-
-        async function getLeaderboard() {
-            const gameTitleId = document.getElementById('leaderboard-game').value;
-            const carModelId = document.getElementById('leaderboard-car').value;
-            const trackNameId = document.getElementById('leaderboard-track').value;
-
-            if (!gameTitleId || !carModelId || !trackNameId) {
-                document.getElementById('leaderboard-error').textContent = 'すべての項目を選択してください';
-                document.getElementById('leaderboard-error').classList.remove('hidden');
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/leaderboard?game_title_id=${gameTitleId}&car_model_id=${carModelId}&track_name_id=${trackNameId}`);
-                const data = await response.json();
-
-                if (response.ok) {
-                    const tbody = document.getElementById('leaderboard-body');
-                    tbody.innerHTML = '';
-                    data.forEach((lap, index) => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${index + 1}</td>
-                            <td>${lap.username}</td>
-                            <td>${formatLapTime(lap.lap_time)}</td>
-                            <td>${new Date(lap.recorded_at).toLocaleString()}</td>
-                            <td>${lap.notes || ''}</td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                    document.getElementById('leaderboard-error').classList.add('hidden');
-                } else {
-                    document.getElementById('leaderboard-error').textContent = data.error;
-                    document.getElementById('leaderboard-error').classList.remove('hidden');
-                }
-            } catch (error) {
-                document.getElementById('leaderboard-error').textContent = 'エラーが発生しました';
-                document.getElementById('leaderboard-error').classList.remove('hidden');
-            }
-        }
-
-        function formatLapTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = (seconds % 60).toFixed(3);
-            return `${minutes}:${remainingSeconds.padStart(6, '0')}`;
-        }
-
-        function showMainContainer() {
-            document.getElementById('auth-container').classList.add('hidden');
-            document.getElementById('main-container').classList.remove('hidden');
-        }
-
-        // 診断情報の更新
-        function updateDiagnosticInfo() {
-            fetch('/api/diagnostic')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('lastCheck').textContent = data.last_check ? new Date(data.last_check).toLocaleString() : '-';
-                    document.getElementById('dbStatus').textContent = data.database_status;
-                    document.getElementById('apiStatus').textContent = data.api_status;
-                    document.getElementById('errorCount').textContent = data.error_count;
-                })
-                .catch(error => console.error('診断情報の取得に失敗:', error));
-        }
-
-        // 診断モーダルの表示
-        const diagnosticModal = document.getElementById('diagnosticModal');
-        const diagnosticBtn = document.createElement('button');
-        diagnosticBtn.textContent = 'システム診断';
-        diagnosticBtn.className = 'btn btn-info';
-        diagnosticBtn.style.position = 'fixed';
-        diagnosticBtn.style.bottom = '20px';
-        diagnosticBtn.style.right = '20px';
-        document.body.appendChild(diagnosticBtn);
-
-        diagnosticBtn.onclick = function() {
-            updateDiagnosticInfo();
-            diagnosticModal.style.display = 'block';
-        }
-
-        // 診断モーダルの閉じるボタン
-        const diagnosticClose = document.getElementsByClassName('close')[1];
-        diagnosticClose.onclick = function() {
-            diagnosticModal.style.display = 'none';
-        }
-
-        // 5分ごとに診断情報を更新
-        setInterval(updateDiagnosticInfo, 300000);
-
-        // ラップタイムの追加
-        document.getElementById('addLapTime').addEventListener('click', function() {
-            const container = document.getElementById('lapTimesContainer');
-            const newLapTime = document.createElement('div');
-            newLapTime.className = 'lap-time-input';
-            newLapTime.innerHTML = `
-                <input type="text" class="form-control lap-time" placeholder="例: 01:30" pattern="[0-9]{2}:[0-9]{2}" required>
-                <button type="button" class="btn btn-danger remove-lap">削除</button>
-            `;
-            container.appendChild(newLapTime);
-            updateRemoveButtons();
-        });
-
-        // ラップタイムの削除ボタンの表示/非表示を更新
-        function updateRemoveButtons() {
-            const removeButtons = document.querySelectorAll('.remove-lap');
-            removeButtons.forEach(button => {
-                button.style.display = removeButtons.length > 1 ? 'inline-block' : 'none';
-            });
-        }
-
-        // ラップタイムの削除
-        document.getElementById('lapTimesContainer').addEventListener('click', function(e) {
-            if (e.target.classList.contains('remove-lap')) {
-                e.target.parentElement.remove();
-                updateRemoveButtons();
-                updateTotalTime();
-            }
-        });
-
-        // 合計タイムの計算
-        function updateTotalTime() {
-            const lapTimes = document.querySelectorAll('.lap-time');
-            let totalSeconds = 0;
-            
-            lapTimes.forEach(input => {
-                if (input.value) {
-                    const [minutes, seconds] = input.value.split(':').map(Number);
-                    totalSeconds += minutes * 60 + seconds;
-                }
-            });
-            
-            const totalMinutes = Math.floor(totalSeconds / 60);
-            const remainingSeconds = totalSeconds % 60;
-            const totalTimeDisplay = `${String(totalMinutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-            
-            document.querySelector('#totalTime span').textContent = totalTimeDisplay;
-        }
-
-        // ラップタイム入力時の合計タイム更新
-        document.getElementById('lapTimesContainer').addEventListener('input', function(e) {
-            if (e.target.classList.contains('lap-time')) {
-                updateTotalTime();
-            }
-        });
-
-        // ラップタイムのバリデーション
-        function validateLapTime(time) {
-            return /^[0-9]{2}:[0-9]{2}$/.test(time);
-        }
-
-        // フォーム送信時の処理を更新
-        document.getElementById('lapForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const lapTimes = Array.from(document.querySelectorAll('.lap-time')).map(input => input.value);
-            
-            // バリデーション
-            if (!lapTimes.every(validateLapTime)) {
-                alert('ラップタイムは「分:秒」の形式で入力してください（例: 01:30）');
-                return;
-            }
-            
-            const data = {
-                game_title_id: document.getElementById('game-title').value,
-                car_model_id: document.getElementById('car-model').value,
-                track_name_id: document.getElementById('track-name').value,
-                lap_times: lapTimes,
-                note: document.getElementById('note').value
-            };
-            
-            fetch('/api/laps', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    alert('ラップタイムを記録しました');
-                    document.getElementById('lapForm').reset();
-                    document.getElementById('lapTimesContainer').innerHTML = `
-                        <div class="lap-time-input">
-                            <input type="text" class="form-control lap-time" placeholder="例: 01:30" pattern="[0-9]{2}:[0-9]{2}" required>
-                            <button type="button" class="btn btn-danger remove-lap" style="display: none;">削除</button>
+                        <div class="mb-3">
+                            <label for="new-track-lap-count" class="form-label">ラップ数</label>
+                            <input type="number" class="form-control" id="new-track-lap-count" min="1" value="1" required>
                         </div>
-                    `;
-                    updateTotalTime();
-                    getLeaderboard();
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('エラーが発生しました');
-            });
-        });
+                        <button type="submit" class="btn btn-primary">登録</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        // リーダーボードの表示を更新
-        function loadLeaderboard() {
-            const gameTitleId = document.getElementById('leaderboard-game').value;
-            const carModelId = document.getElementById('leaderboard-car').value;
-            const trackNameId = document.getElementById('leaderboard-track').value;
-            
-            fetch(`/api/laps?game_title_id=${gameTitleId}&car_model_id=${carModelId}&track_name_id=${trackNameId}`)
-                .then(response => response.json())
-                .then(laps => {
-                    const tbody = document.querySelector('#leaderboard-body');
-                    tbody.innerHTML = '';
-                    
-                    laps.forEach(lap => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${lap.game_title}</td>
-                            <td>${lap.car_model}</td>
-                            <td>${lap.track_name}</td>
-                            <td>${lap.total_time}</td>
-                            <td>${lap.lap_count}</td>
-                            <td>${lap.lap_times.map(lt => `#${lt.lap_number}: ${lt.time}`).join('<br>')}</td>
-                            <td>${lap.note || ''}</td>
-                            <td>${new Date(lap.created_at).toLocaleString()}</td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('リーダーボードの読み込みに失敗しました');
-                });
-        }
+    <!-- 新規車種登録モーダル -->
+    <div class="modal fade" id="newCarModelModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">新規車種登録</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-car-model-form">
+                        <div class="mb-3">
+                            <label for="new-car-model" class="form-label">車種</label>
+                            <input type="text" class="form-control" id="new-car-model" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">登録</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        // コース登録
-        function addTrack() {
-            const trackName = document.getElementById('trackName').value.trim();
-            const lapCount = parseInt(document.getElementById('lapCount').value);
-            
-            if (!trackName) {
-                alert('コース名を入力してください');
-                return;
-            }
-            
-            if (!lapCount || lapCount < 1) {
-                alert('ラップ数は1以上の整数を入力してください');
-                return;
-            }
-            
-            // 送信ボタンを無効化
-            const submitButton = document.querySelector('#trackForm button[type="submit"]');
-            submitButton.disabled = true;
-            
-            fetch('/api/track-names', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    name: trackName,
-                    lap_count: lapCount
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    alert('コースを登録しました');
-                    document.getElementById('trackForm').reset();
-                    closeTrackModal();
-                    loadTrackNames();
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('コースの登録に失敗しました。もう一度お試しください。');
-            })
-            .finally(() => {
-                // 送信ボタンを再度有効化
-                submitButton.disabled = false;
-            });
-        }
-
-        // フォームの送信イベントをハンドル
-        document.getElementById('trackForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            addTrack();
-        });
-
-        // コース選択時のラップタイム入力欄の更新
-        document.getElementById('trackName').addEventListener('change', function() {
-            const selectedTrack = this.options[this.selectedIndex];
-            const lapCount = parseInt(selectedTrack.getAttribute('data-lap-count')) || 1;
-            
-            const container = document.getElementById('lapTimesContainer');
-            container.innerHTML = '';
-            
-            for (let i = 0; i < lapCount; i++) {
-                const lapTimeDiv = document.createElement('div');
-                lapTimeDiv.className = 'lap-time-input';
-                lapTimeDiv.innerHTML = `
-                    <input type="text" class="form-control lap-time" placeholder="例: 01:30" pattern="[0-9]{2}:[0-9]{2}" required>
-                    <button type="button" class="btn btn-danger remove-lap" style="display: none;">削除</button>
-                `;
-                container.appendChild(lapTimeDiv);
-            }
-            
-            updateRemoveButtons();
-            updateTotalTime();
-        });
-
-        // コース一覧の取得を更新
-        function getTrackNames() {
-            fetch('/api/track-names')
-                .then(response => response.json())
-                .then(tracks => {
-                    const select = document.getElementById('trackName');
-                    select.innerHTML = '<option value="">コースを選択</option>';
-                    tracks.forEach(track => {
-                        const option = document.createElement('option');
-                        option.value = track.id;
-                        option.textContent = track.name;
-                        option.setAttribute('data-lap-count', track.lap_count);
-                        select.appendChild(option);
-                    });
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('コース一覧の取得に失敗しました');
-                });
-        }
-
-        // コース登録モーダルの閉じるボタン
-        function closeTrackModal() {
-            document.getElementById('trackModal').style.display = 'none';
-        }
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html> 

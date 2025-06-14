@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 # データベースファイルの削除（存在する場合）
 echo "データベースを初期化しています..."
-rm -f instance/app.db app.db
+rm -f instance/gtrsb.db gtrsb.db
 
 # ポート5001を使用しているプロセスの確認と終了
 echo "ポート5001の状態を確認しています..."
@@ -39,6 +39,15 @@ fi
 echo "ログディレクトリを作成しています..."
 mkdir -p logs
 
+# 静的ファイルディレクトリの作成
+echo "静的ファイルディレクトリを作成しています..."
+mkdir -p static
+
+# 環境変数の設定
+export FLASK_APP=app.py
+export FLASK_ENV=development
+export FLASK_DEBUG=1
+
 # アプリケーションの起動
 echo "アプリケーションを起動しています..."
 echo "ブラウザで http://127.0.0.1:5001 にアクセスしてください"
@@ -46,7 +55,7 @@ echo "終了するには Ctrl+C を押してください"
 echo "=========================================="
 
 # アプリケーションの実行
-python3 app.py
+flask run --host=127.0.0.1 --port=5001
 
 # 仮想環境のデアクティベート
 deactivate 

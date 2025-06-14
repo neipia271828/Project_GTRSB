@@ -1,0 +1,16 @@
+.lap-time-input {
+    margin-bottom: 10px;
+}
+.record-form {
+    max-width: 800px;
+    margin: 0 auto;
+}
+.leaderboard {
+    margin-top: 30px;
+}
+.filter-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+} 
