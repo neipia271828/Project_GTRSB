@@ -380,7 +380,9 @@ def get_records(current_user):
     if request.args.get('track_id'):
         filters['track_id'] = request.args.get('track_id')
     if request.args.get('user_id'):
-        filters['user_id'] = request.args.get('user_id')
+        # Recordモデルでは作成者をcreated_byで管理しているため
+        # クエリパラメータuser_idはcreated_byにマッピングする
+        filters['created_by'] = request.args.get('user_id')
     
     records = Record.query.filter_by(**filters).order_by(Record.total_time).all()
     return jsonify([{
