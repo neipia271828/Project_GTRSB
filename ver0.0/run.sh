@@ -28,11 +28,16 @@ rm -f instance/gtrsb.db gtrsb.db
 
 # ポート5001を使用しているプロセスの確認と終了
 echo "ポート5001の状態を確認しています..."
-PID=$(lsof -ti :5001 || true)
-if [ ! -z "$PID" ]; then
-    echo "ポート5001を使用しているプロセス($PID)を終了します..."
-    kill -9 $PID
-    sleep 1
+if command -v lsof >/dev/null 2>&1; then
+    PID=$(lsof -ti :5001 || true)
+    if [ -n "$PID" ]; then
+        echo "ポート5001を使用しているプロセス($PID)を終了します..."
+        kill -9 $PID
+        sleep 1
+    fi
+else
+    echo "lsof コマンドが見つかりませんでした。\n"
+    echo "ポート5001を使っているプロセスは手動で終了してください。"
 fi
 
 # ログディレクトリの作成
