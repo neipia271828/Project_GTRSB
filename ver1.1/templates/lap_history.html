@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTRラップタイム記録 - 履歴</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .lap-history-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .lap-history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .lap-history-title {
+            margin: 0;
+            color: #2c3e50;
+        }
+
+        .lap-history-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .lap-history-table th,
+        .lap-history-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .lap-history-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            cursor: pointer;
+            position: relative;
+            padding-right: 25px;
+        }
+
+        .lap-history-table th:hover {
+            background-color: #e9ecef;
+        }
+
+        .lap-history-table th::after {
+            content: '↕';
+            position: absolute;
+            right: 8px;
+            color: #999;
+        }
+
+        .lap-history-table th.asc::after {
+            content: '↑';
+            color: #2c3e50;
+        }
+
+        .lap-history-table th.desc::after {
+            content: '↓';
+            color: #2c3e50;
+        }
+
+        .lap-history-table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .lap-time {
+            font-family: monospace;
+            font-size: 18px;
+            color: #2c3e50;
+        }
+
+        .game-title {
+            color: #3498db;
+        }
+
+        .car {
+            color: #2ecc71;
+        }
+
+        .course {
+            color: #e67e22;
+        }
+
+        .memo {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .delete-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .delete-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .filter-section {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .filter-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .no-records {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="lap-history-container">
+        <div class="lap-history-header">
+            <h1 class="lap-history-title">ラップタイム履歴</h1>
+            <a href="{{ url_for('dashboard') }}" class="btn">ダッシュボードに戻る</a>
+        </div>
+
+        <div class="filter-section">
+            <form class="filter-form" id="filterForm">
+                <div class="filter-group">
+                    <label for="gameTitleFilter">ゲームタイトル</label>
+                    <select id="gameTitleFilter" onchange="updateFilters()">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="carFilter">車種</label>
+                    <select id="carFilter">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="courseFilter">コース</label>
+                    <select id="courseFilter">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+
+        <table class="lap-history-table">
+            <thead>
+                <tr>
+                    <th onclick="sortTable('created_at')">日時</th>
+                    <th onclick="sortTable('game_title')">ゲームタイトル</th>
+                    <th onclick="sortTable('car')">車種</th>
+                    <th onclick="sortTable('course')">コース</th>
+                    <th onclick="sortTable('time')">ラップタイム</th>
+                    <th onclick="sortTable('memo')">メモ</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="lapHistoryBody">
+                <!-- ラップタイム履歴がここに動的に追加されます -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let currentSort = {
+            column: 'created_at',
+            direction: 'desc'
+        };
+
+        // 初期データの読み込み
+        document.addEventListener('DOMContentLoaded', function() {
+            loadGameTitles();
+            loadLapHistory();
+        });
+
+        // ゲームタイトルの読み込み
+        async function loadGameTitles() {
+            try {
+                const response = await fetch('/api/game-titles');
+                const gameTitles = await response.json();
+                const filter = document.getElementById('gameTitleFilter');
+                gameTitles.forEach(gt => {
+                    const option = document.createElement('option');
+                    option.value = gt.id;
+                    option.textContent = gt.name;
+                    filter.appendChild(option);
+                });
+            } catch (error) {
+                console.error('ゲームタイトルの読み込みに失敗しました:', error);
+            }
+        }
+
+        // フィルターの更新
+        async function updateFilters() {
+            const gameTitleId = document.getElementById('gameTitleFilter').value;
+            if (gameTitleId) {
+                await loadCars(gameTitleId);
+                await loadCourses(gameTitleId);
+            } else {
+                document.getElementById('carFilter').innerHTML = '<option value="">すべて</option>';
+                document.getElementById('courseFilter').innerHTML = '<option value="">すべて</option>';
+            }
+            loadLapHistory();
+        }
+
+        // 車種の読み込み
+        async function loadCars(gameTitleId) {
+            try {
+                const response = await fetch(`/api/cars?game_title_id=${gameTitleId}`);
+                const cars = await response.json();
+                const filter = document.getElementById('carFilter');
+                filter.innerHTML = '<option value="">すべて</option>';
+                cars.forEach(car => {
+                    const option = document.createElement('option');
+                    option.value = car.id;
+                    option.textContent = car.name;
+                    filter.appendChild(option);
+                });
+            } catch (error) {
+                console.error('車種の読み込みに失敗しました:', error);
+            }
+        }
+
+        // コースの読み込み
+        async function loadCourses(gameTitleId) {
+            try {
+                const response = await fetch(`/api/courses?game_title_id=${gameTitleId}`);
+                const courses = await response.json();
+                const filter = document.getElementById('courseFilter');
+                filter.innerHTML = '<option value="">すべて</option>';
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course.id;
+                    option.textContent = course.name;
+                    filter.appendChild(option);
+                });
+            } catch (error) {
+                console.error('コースの読み込みに失敗しました:', error);
+            }
+        }
+
+        // テーブルのソート
+        function sortTable(column) {
+            const headers = document.querySelectorAll('.lap-history-table th');
+            headers.forEach(header => {
+                header.classList.remove('asc', 'desc');
+            });
+
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            const header = document.querySelector(`.lap-history-table th[onclick="sortTable('${column}')"]`);
+            header.classList.add(currentSort.direction);
+
+            loadLapHistory();
+        }
+
+        // ラップタイム履歴の読み込み
+        async function loadLapHistory() {
+            try {
+                const gameTitleId = document.getElementById('gameTitleFilter').value;
+                const carId = document.getElementById('carFilter').value;
+                const courseId = document.getElementById('courseFilter').value;
+
+                const response = await fetch('/api/lap-times');
+                const laps = await response.json();
+                const tbody = document.getElementById('lapHistoryBody');
+                tbody.innerHTML = '';
+
+                let filteredLaps = laps.filter(lap => {
+                    if (gameTitleId && lap.game_title_id != gameTitleId) return false;
+                    if (carId && lap.car_id != carId) return false;
+                    if (courseId && lap.course_id != courseId) return false;
+                    return true;
+                });
+
+                // ソート処理
+                filteredLaps.sort((a, b) => {
+                    let valueA, valueB;
+                    
+                    switch (currentSort.column) {
+                        case 'created_at':
+                            valueA = new Date(a.created_at);
+                            valueB = new Date(b.created_at);
+                            break;
+                        case 'time':
+                            // ラップタイムの比較（分:秒.ミリ秒形式）
+                            const [minA, secA] = a.time.split(':');
+                            const [minB, secB] = b.time.split(':');
+                            valueA = parseFloat(minA) * 60 + parseFloat(secA);
+                            valueB = parseFloat(minB) * 60 + parseFloat(secB);
+                            break;
+                        default:
+                            valueA = a[currentSort.column] || '';
+                            valueB = b[currentSort.column] || '';
+                    }
+
+                    if (currentSort.direction === 'asc') {
+                        return valueA > valueB ? 1 : -1;
+                    } else {
+                        return valueA < valueB ? 1 : -1;
+                    }
+                });
+
+                if (filteredLaps.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="no-records">記録がありません</td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                filteredLaps.forEach(lap => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${lap.created_at}</td>
+                        <td class="game-title">${lap.game_title}</td>
+                        <td class="car">${lap.car}</td>
+                        <td class="course">${lap.course}</td>
+                        <td class="lap-time">${lap.time}</td>
+                        <td class="memo">${lap.memo || ''}</td>
+                        <td>
+                            <button onclick="deleteLap(${lap.id})" class="delete-btn">削除</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                console.error('ラップタイム履歴の読み込みに失敗しました:', error);
+            }
+        }
+
+        // ラップタイムの削除
+        async function deleteLap(lapId) {
+            if (!confirm('このラップタイムを削除しますか？')) return;
+
+            try {
+                const response = await fetch(`/api/lap-times/${lapId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadLapHistory();
+                } else {
+                    alert('ラップタイムの削除に失敗しました');
+                }
+            } catch (error) {
+                console.error('ラップタイムの削除に失敗しました:', error);
+            }
+        }
+    </script>
+</body>
+</html> 
